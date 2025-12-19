@@ -1,0 +1,265 @@
+#include <windows.h>
+#include <stdio.h>
+#include <time.h>
+#include <stdlib.h>
+
+typedef struct {
+    const char *city;
+    int utc;
+} TimeZone;
+
+TimeZone zones[] = {
+    {"New York (USA)", -5},
+    {"Los Angeles (USA)", -8},
+    {"Chicago (USA)", -6},
+    {"London (UK)", 0},
+    {"Paris (France)", 1},
+    {"Berlin (Germany)", 1},
+    {"Moscow (Russia)", 3},
+    {"Dubai (UAE)", 4},
+    {"New Delhi (India)", 5},
+    {"Tokyo (Japan)", 9}
+};
+
+#define ZONE_COUNT (sizeof(zones)/sizeof(TimeZone))
+
+#define ID_CITY1    101
+#define ID_CITY2    102
+#define ID_PASS     103
+#define ID_NAMES    104
+#define ID_SHOW     105
+#define ID_DATE     106
+#define ID_ARRTIME  107
+
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+
+int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrev, LPSTR lpCmd, int nCmdShow)
+{
+    (void)hPrev;
+    (void)lpCmd;
+
+    WNDCLASS wc = {0};
+    wc.lpfnWndProc = WndProc;
+    wc.hInstance = hInst;
+    wc.lpszClassName = "FlightApp";
+    wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+
+    RegisterClass(&wc);
+
+    HWND hwnd = CreateWindow(
+        "FlightApp",
+        "Flight Jet Lag & Fatigue Analyzer",
+        WS_OVERLAPPEDWINDOW,
+        250, 120, 600, 640,
+        NULL, NULL, hInst, NULL);
+
+    ShowWindow(hwnd, nCmdShow);
+
+    MSG msg;
+    while (GetMessage(&msg, NULL, 0, 0)) {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+    return 0;
+}
+
+LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    static HWND city1, city2, edtPass, edtNames, edtDate, edtArrTime, result;
+    char buffer[4096];
+
+    switch (msg)
+    {
+    case WM_CREATE:
+
+        CreateWindow("STATIC", "Flight Details & Health Analysis",
+            WS_CHILD | WS_VISIBLE,
+            170, 10, 300, 20,
+            hwnd, NULL, NULL, NULL);
+
+        CreateWindow("STATIC", "Departure City:",
+            WS_CHILD | WS_VISIBLE,
+            40, 40, 150, 20,
+            hwnd, NULL, NULL, NULL);
+
+        city1 = CreateWindow("COMBOBOX", "",
+            WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
+            220, 40, 260, 200,
+            hwnd, (HMENU)ID_CITY1, NULL, NULL);
+
+        CreateWindow("STATIC", "Arrival City:",
+            WS_CHILD | WS_VISIBLE,
+            40, 80, 150, 20,
+            hwnd, NULL, NULL, NULL);
+
+        city2 = CreateWindow("COMBOBOX", "",
+            WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST,
+            220, 80, 260, 200,
+            hwnd, (HMENU)ID_CITY2, NULL, NULL);
+
+        for (int i = 0; i < ZONE_COUNT; i++) {
+            SendMessage(city1, CB_ADDSTRING, 0, (LPARAM)zones[i].city);
+            SendMessage(city2, CB_ADDSTRING, 0, (LPARAM)zones[i].city);
+        }
+
+        SendMessage(city1, CB_SETCURSEL, 0, 0);
+        SendMessage(city2, CB_SETCURSEL, 0, 0);
+
+        CreateWindow("STATIC", "Number of Passengers:",
+            WS_CHILD | WS_VISIBLE,
+            40, 120, 200, 20,
+            hwnd, NULL, NULL, NULL);
+
+        edtPass = CreateWindow("EDIT", "",
+            WS_CHILD | WS_VISIBLE | WS_BORDER,
+            260, 120, 60, 22,
+            hwnd, (HMENU)ID_PASS, NULL, NULL);
+
+        CreateWindow("STATIC", "Passenger Names:",
+            WS_CHILD | WS_VISIBLE,
+            40, 160, 200, 20,
+            hwnd, NULL, NULL, NULL);
+
+        edtNames = CreateWindow("EDIT", "",
+            WS_CHILD | WS_VISIBLE | WS_BORDER | ES_MULTILINE,
+            40, 185, 500, 60,
+            hwnd, (HMENU)ID_NAMES, NULL, NULL);
+
+        CreateWindow("STATIC", "Date of Travel (DD/MM/YYYY):",
+            WS_CHILD | WS_VISIBLE,
+            40, 255, 240, 20,
+            hwnd, NULL, NULL, NULL);
+
+        edtDate = CreateWindow("EDIT", "",
+            WS_CHILD | WS_VISIBLE | WS_BORDER,
+            300, 255, 100, 22,
+            hwnd, (HMENU)ID_DATE, NULL, NULL);
+
+        CreateWindow("STATIC", "Arrival Time (Local) (HH:MM):",
+            WS_CHILD | WS_VISIBLE,
+            40, 285, 240, 20,
+            hwnd, NULL, NULL, NULL);
+
+        edtArrTime = CreateWindow("EDIT", "",
+            WS_CHILD | WS_VISIBLE | WS_BORDER,
+            300, 285, 100, 22,
+            hwnd, (HMENU)ID_ARRTIME, NULL, NULL);
+
+        CreateWindow("BUTTON", "Show Flight Analysis",
+            WS_CHILD | WS_VISIBLE,
+            200, 320, 220, 30,
+            hwnd, (HMENU)ID_SHOW, NULL, NULL);
+
+        result = CreateWindow("EDIT", "",
+            WS_CHILD | WS_VISIBLE | WS_BORDER |
+            ES_MULTILINE | ES_READONLY | WS_VSCROLL | ES_AUTOVSCROLL,
+            40, 360, 500, 250,
+            hwnd, NULL, NULL, NULL);
+
+        break;
+
+    case WM_COMMAND:
+        if (LOWORD(wParam) == ID_SHOW)
+        {
+            int i1 = SendMessage(city1, CB_GETCURSEL, 0, 0);
+            int i2 = SendMessage(city2, CB_GETCURSEL, 0, 0);
+
+            if (i1 != CB_ERR && i2 != CB_ERR)
+            {
+                int passengers;
+                char names[256], dateStr[32], arrTimeStr[16];
+
+                GetWindowText(edtPass, buffer, 16);
+                passengers = atoi(buffer);
+                if (passengers < 1) passengers = 1;
+
+                GetWindowText(edtNames, names, sizeof(names));
+                GetWindowText(edtDate, dateStr, sizeof(dateStr));
+                GetWindowText(edtArrTime, arrTimeStr, sizeof(arrTimeStr));
+
+                int arrHour = 0, arrMin = 0;
+                sscanf(arrTimeStr, "%d:%d", &arrHour, &arrMin);
+
+                int jetlag = abs(zones[i1].utc - zones[i2].utc);
+                int eastward = zones[i2].utc > zones[i1].utc;
+
+                // Detailed Jet Lag Recovery Plan
+                char recovery[512];
+                int recoveryDays = jetlag / 2 + 1;
+
+                if (jetlag <= 2) {
+                    strcpy(recovery,
+                        "Minimal jet lag detected.\r\n"
+                        "Maintain normal sleep and meal timings.");
+                } else {
+                    sprintf(recovery,
+                        "Travel Direction : %s\r\n"
+                        "Day -1           : Adjust sleep by 1 hour.\r\n"
+                        "Arrival Day      : Seek daylight, avoid long naps.\r\n"
+                        "Expected Recovery: %d day(s).",
+                        eastward ? "Eastward" : "Westward",
+                        recoveryDays);
+                }
+
+                // Flight Fatigue Index
+                int fatigue = jetlag * 10 + passengers * 3;
+                if (arrHour < 6 || arrHour > 22)
+                    fatigue += 10;
+                if (fatigue > 100) fatigue = 100;
+
+                // Two recommendations
+                char rec1[128], rec2[128];
+
+                if (fatigue < 40) {
+                    strcpy(rec1, "Normal activities may be resumed.");
+                    strcpy(rec2, "Stay hydrated during travel.");
+                } else if (fatigue < 70) {
+                    strcpy(rec1, "Limit physical and mental exertion.");
+                    strcpy(rec2, "Short naps (20–30 mins) recommended.");
+                } else {
+                    strcpy(rec1, "Avoid meetings and heavy tasks.");
+                    strcpy(rec2, "Prioritize sleep and light meals.");
+                }
+
+                sprintf(buffer,
+                    "==============================\r\n"
+                    "        FLIGHT ANALYSIS\r\n"
+                    "==============================\r\n\r\n"
+                    "Date of Travel : %s\r\n\r\n"
+                    "Departure City : %s\r\n"
+                    "Arrival City   : %s\r\n"
+                    "Arrival Time   : %02d:%02d (Local)\r\n\r\n"
+                    "Passengers     : %d\r\n"
+                    "Passenger Names: %s\r\n\r\n"
+                    "------------------------------\r\n"
+                    "Jet Lag              : %d hour(s)\r\n\r\n"
+                    "Jet Lag Recovery Plan:\r\n%s\r\n\r\n"
+                    "Flight Fatigue Index : %d / 100\r\n\r\n"
+                    "Recommendations:\r\n"
+                    "1. %s\r\n"
+                    "2. %s\r\n"
+                    "------------------------------",
+                    dateStr,
+                    zones[i1].city,
+                    zones[i2].city,
+                    arrHour, arrMin,
+                    passengers,
+                    names,
+                    jetlag,
+                    recovery,
+                    fatigue,
+                    rec1,
+                    rec2);
+
+                SetWindowText(result, buffer);
+            }
+        }
+        break;
+
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        break;
+    }
+
+    return DefWindowProc(hwnd, msg, wParam, lParam);
+}
